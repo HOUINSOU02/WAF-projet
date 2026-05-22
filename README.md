@@ -44,7 +44,8 @@ Le tableau de bord Grafana inclus (`monitoring/dashboard.json`) permet de suivre
 
 2. **Démarrage** :
    ```bash
-   docker-compose up -d --build
+   cd waf-projet
+   ./start
    ```
 
 3. **Accès aux services** :
