@@ -26,31 +26,42 @@ Le projet utilise un réseau dédié `waf_net` (sous-réseau `10.89.1.0/24`) :
 - **WAF** : `10.89.1.10` (Ports 8080/8443)
 - **Application (BWAPP)** : `10.89.1.20`
 - **Grafana** : `10.89.1.32` (Port 3000)
-- **IA Module** : `10.89.1.40` (Port 8000)
+- **IA Module** : `10.89.1.40`
+- **SIEM (Dashboard)** : `10.89.1.50` (Port 5001)
 
 ## 📈 Dashboard de Sécurité
 
-Le tableau de bord Grafana inclus (`monitoring/dashboard.json`) permet de suivre :
+Le projet propose deux interfaces de monitoring :
+1. **Grafana** : Visualisation avancée des métriques de logs Loki.
+2. **SIEM Custom** : Dashboard spécialisé en Flask pour l'analyse en temps réel et la géolocalisation des attaques.
+
+Fonctionnalités clés :
 - **Attaques bloquées en temps réel** (Statut HTTP 403).
 - **Classification des attaques** : SQL Injection (SQLi), Cross-Site Scripting (XSS), Local File Inclusion (LFI), et Command Injection.
 - **Score d'anomalie** : Analyse des logs ModSecurity pour identifier les comportements suspects.
 - **Logs IA** : Monitoring spécifique des détections effectuées par le module d'intelligence artificielle.
+- **Géolocalisation** : Visualisation de l'origine géographique des attaquants (via l'API IP-API).
 
 ## 🛠️ Installation et Lancement
 
-1. **Prérequis** : 
-   - Docker et Docker Compose installés.
-   - Le dossier `//waf-project/bw_data` doit être accessible pour les volumes persistants.
+1. **Configuration de l'environnement** :
+   Copiez le fichier d'exemple et configurez vos mots de passe sécurisés :
+   ```bash
+   cp .env.example .env
+   # Éditez le fichier .env avec vos propres identifiants
+   nano .env
+   ```
 
-2. **Démarrage** :
+2. **Démarrage des services** :
    ```bash
    docker compose up
    ```
 
 3. **Accès aux services** :
    - **Application via WAF** : `http://localhost:8080`
-   - **Interface WAF** : `http://localhost:7000` (Admin: `admin` / Pass: `Admin@2024!`)
-   - **Grafana** : `http://localhost:3000` (Admin: `admin` / Pass: `Admin@2024!`)
+   - **Interface WAF (BunkerWeb UI)** : `http://localhost:7000` (Identifiants configurés dans `.env`)
+   - **SIEM Dashboard** : `http://localhost:5001`
+   - **Grafana** : `http://localhost:3000` (Identifiants configurés dans `.env`)
 
 ## 📂 Structure des fichiers
 
