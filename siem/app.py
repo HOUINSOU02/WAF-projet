@@ -217,12 +217,12 @@ def api_stats():
 
     ia_stats = {}
     try:
-        r        = requests.get(f"{PROXY_URL}/ia/stats", timeout=3)
+        r        = http_session.get(f"{PROXY_URL}/ia/stats", timeout=3)
         ia_stats = r.json()
     except Exception:
         # Fallback sur le module IA directement
         try:
-            r        = requests.get(f"{IA_URL}/stats", timeout=3)
+            r        = http_session.get(f"{IA_URL}/stats", timeout=3)
             raw      = r.json()
             ia_stats = {
                 "total_blocked": raw.get("total_blocked", 0),
@@ -327,16 +327,16 @@ def api_health():
     loki_ok = False
     ia_ok   = False
     try:
-        requests.get(f"{LOKI_URL}/ready", timeout=2)
+        http_session.get(f"{LOKI_URL}/ready", timeout=2)
         loki_ok = True
     except Exception:
         pass
     try:
-        requests.get(f"{PROXY_URL}/ia/health", timeout=2)
+        http_session.get(f"{PROXY_URL}/ia/health", timeout=2)
         ia_ok = True
     except Exception:
         try:
-            requests.get(f"{IA_URL}/health", timeout=2)
+            http_session.get(f"{IA_URL}/health", timeout=2)
             ia_ok = True
         except Exception:
             pass
