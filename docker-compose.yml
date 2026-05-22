@@ -39,8 +39,8 @@ services:
     ports:
       - "127.0.0.1:7000:7000"
     environment:
-      - ADMIN_USERNAME=admin
-      - ADMIN_PASSWORD=Admin@2024!
+      - ADMIN_USERNAME=${BW_ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${BW_ADMIN_PASSWORD}
     volumes:
       - bw_data:/data
     networks:
@@ -116,8 +116,8 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=Admin@2024!
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro

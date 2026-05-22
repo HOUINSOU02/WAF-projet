@@ -11,6 +11,9 @@ LOKI_URL   = os.getenv("LOKI_URL",   "http://10.89.1.30:3100")
 IA_URL     = os.getenv("IA_URL",     "http://10.89.1.40:8000")
 PROXY_URL  = os.getenv("PROXY_URL",  "http://10.89.1.45:9000")
 
+# Utilisation d'une session pour réutiliser les connexions TCP
+http_session = requests.Session()
+
 # ─── Utilitaires ──────────────────────────────────────────────────────────────
 
 PERIODS = {
@@ -37,13 +40,14 @@ def get_time_range(period="24h"):
 def query_loki(query, period="24h", limit=500):
     start, end = get_time_range(period)
     try:
-        resp = requests.get(
+        resp = http_session.get(
             f"{LOKI_URL}/loki/api/v1/query_range",
             params={"query": query, "start": start, "end": end, "limit": limit},
             timeout=5
         )
+        resp.raise_for_status()
         return resp.json()
-    except Exception:
+    except Exception as e:
         return {"data": {"result": []}}
 
 def get_blocked_requests(period="24h"):
@@ -61,7 +65,7 @@ def feed_logs_to_ia(logs):
         if info["ip"] == "unknown":
             continue
         try:
-            requests.post(f"{IA_URL}/analyze", json={
+            http_session.post(f"{IA_URL}/analyze", json={
                 "ip":     info["ip"],
                 "method": info["method"],
                 "url":    info["url"],
@@ -126,7 +130,7 @@ def geolocate_ip(ip):
         return {"country": "Réseau local", "city": "Interne",
                 "lat": 48.8566, "lon": 2.3522, "flag": "🏠"}
     try:
-        r = requests.get(
+        r = http_session.get(
             f"http://ip-api.com/json/{ip}?fields=country,city,lat,lon,countryCode",
             timeout=3
         )
@@ -245,7 +249,7 @@ def api_stats():
 
     ia_stats = {}
     try:
-        r        = requests.get(f"{IA_URL}/stats", timeout=3)
+        r        = http_session.get(f"{IA_URL}/stats", timeout=3)
         raw      = r.json()
         ia_stats = {
             "total_blocked":  raw.get("total_blocked", 0),
@@ -351,16 +355,16 @@ def api_health():
     loki_ok = False
     ia_ok   = False
     try:
-        requests.get(f"{LOKI_URL}/ready", timeout=2)
+        http_session.get(f"{LOKI_URL}/ready", timeout=2)
         loki_ok = True
     except Exception:
         pass
     try:
-        requests.get(f"{PROXY_URL}/ia/health", timeout=2)
+        http_session.get(f"{PROXY_URL}/ia/health", timeout=2)
         ia_ok = True
     except Exception:
         try:
-            requests.get(f"{IA_URL}/health", timeout=2)
+            http_session.get(f"{IA_URL}/health", timeout=2)
             ia_ok = True
         except Exception:
             pass

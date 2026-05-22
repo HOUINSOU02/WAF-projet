@@ -54,7 +54,11 @@ Fonctionnalités clés :
 
 2. **Démarrage des services** :
    ```bash
-   docker compose up
+   cd waf-project
+   ./start.sh
+   #pour lancer des attaques
+   attack_sim.
+
    ```
 
 3. **Accès aux services** :
