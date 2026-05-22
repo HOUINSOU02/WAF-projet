@@ -12,8 +12,7 @@ services:
       - USE_MODSECURITY_CRS=yes
       - USE_REVERSE_PROXY=yes
       - REVERSE_PROXY_URL=/
-      # Pointe vers le proxy IA au lieu de bWAPP directement
-      - REVERSE_PROXY_HOST=http://waf-ia-proxy:9000
+      - REVERSE_PROXY_HOST=http://bwapp
     volumes:
       - bw_data:/data
     networks:
@@ -39,8 +38,8 @@ services:
     ports:
       - "127.0.0.1:7000:7000"
     environment:
-      - ADMIN_USERNAME=admin
-      - ADMIN_PASSWORD=Admin@2024!
+      - ADMIN_USERNAME=${BW_ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${BW_ADMIN_PASSWORD}
     volumes:
       - bw_data:/data
     networks:
@@ -50,7 +49,8 @@ services:
   bwapp:
     image: raesene/bwapp
     container_name: bwapp
-    # Plus exposé directement — accessible uniquement via le proxy IA
+    ports:
+      - "127.0.0.1:8888:80"
     environment:
       - MYSQL_ROOT_PASSWORD=bwapp
     networks:
@@ -68,26 +68,6 @@ services:
     networks:
       waf_net:
         ipv4_address: 10.89.1.21
-
-  # ── Proxy WAF-IA ──────────────────────────────────────────────────────────
-  waf-ia-proxy:
-    build:
-      context: ./proxy
-      dockerfile: Dockerfile
-    container_name: waf-ia-proxy
-    ports:
-      - "127.0.0.1:9000:9000"
-    environment:
-      - IA_URL=http://10.89.1.40:8000
-      - BWAPP_URL=http://10.89.1.20:80
-    networks:
-      waf_net:
-        ipv4_address: 10.89.1.45
-    restart: unless-stopped
-    depends_on:
-      - ia-module
-      - bwapp
-  # ─────────────────────────────────────────────────────────────────────────
 
   loki:
     image: grafana/loki:3.4.2
@@ -116,8 +96,8 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=Admin@2024!
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
@@ -140,10 +120,6 @@ services:
     build: ./siem
     ports:
       - "127.0.0.1:5001:5000"
-    environment:
-      - LOKI_URL=http://10.89.1.30:3100
-      - IA_URL=http://10.89.1.40:8000
-      - PROXY_URL=http://10.89.1.45:9000
     networks:
       waf_net:
         ipv4_address: 10.89.1.50
@@ -151,7 +127,6 @@ services:
     depends_on:
       - loki
       - ia-module
-      - waf-ia-proxy
 
 volumes:
   bw_data:
