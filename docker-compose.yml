@@ -1,0 +1,171 @@
+services:
+
+  bunkerweb:
+    image: bunkerity/bunkerweb:1.6.9
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8443:8443"
+    environment:
+      - SERVER_NAME=localhost
+      - API_WHITELIST_IP=127.0.0.0/8 10.89.1.0/24 10.88.0.0/16 172.16.0.0/12
+      - USE_MODSECURITY=yes
+      - USE_MODSECURITY_CRS=yes
+      - USE_REVERSE_PROXY=yes
+      - REVERSE_PROXY_URL=/
+      # Pointe vers le proxy IA au lieu de bWAPP directement
+      - REVERSE_PROXY_HOST=http://waf-ia-proxy:9000
+    volumes:
+      - bw_data:/data
+    networks:
+      waf_net:
+        ipv4_address: 10.89.1.10
+
+  bw-scheduler:
+    image: bunkerity/bunkerweb-scheduler:1.6.9
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - BUNKERWEB_INSTANCES=http://10.89.1.10:5000
+    volumes:
+      - /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro
+      - bw_data:/data
+    networks:
+      waf_net:
+        ipv4_address: 10.89.1.11
+    depends_on:
+      - bunkerweb
+
+  bw-ui:
+    image: bunkerity/bunkerweb-ui:1.6.9
+    ports:
+      - "127.0.0.1:7000:7000"
+    environment:
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=Admin@2024!
+    volumes:
+      - bw_data:/data
+    networks:
+      waf_net:
+        ipv4_address: 10.89.1.12
+
+  bwapp:
+    image: raesene/bwapp
+    container_name: bwapp
+    # Plus exposé directement — accessible uniquement via le proxy IA
+    environment:
+      - MYSQL_ROOT_PASSWORD=bwapp
+    networks:
+      waf_net:
+        ipv4_address: 10.89.1.20
+    depends_on:
+      - bwapp-db
+
+  bwapp-db:
+    image: mysql:5.7
+    container_name: bwapp-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=bwapp
+      - MYSQL_DATABASE=bwapp
+    networks:
+      waf_net:
+        ipv4_address: 10.89.1.21
+
+  # ── Proxy WAF-IA ──────────────────────────────────────────────────────────
+  waf-ia-proxy:
+    build:
+      context: ./proxy
+      dockerfile: Dockerfile
+    container_name: waf-ia-proxy
+    ports:
+      - "127.0.0.1:9000:9000"
+    environment:
+      - IA_URL=http://10.89.1.40:8000
+      - BWAPP_URL=http://10.89.1.20:80
+    networks:
+      waf_net:
+        ipv4_address: 10.89.1.45
+    restart: unless-stopped
+    depends_on:
+      - ia-module
+      - bwapp
+  # ─────────────────────────────────────────────────────────────────────────
+
+  loki:
+    image: grafana/loki:3.4.2
+    ports:
+      - "127.0.0.1:3100:3100"
+    volumes:
+      - ./monitoring/loki-data:/loki-data
+      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+    networks:
+      waf_net:
+        ipv4_address: 10.89.1.30
+
+  promtail:
+    image: grafana/promtail:3.4.2
+    volumes:
+      - /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro
+      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
+    networks:
+      waf_net:
+        ipv4_address: 10.89.1.31
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=Admin@2024!
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    networks:
+      waf_net:
+        ipv4_address: 10.89.1.32
+    depends_on:
+      - loki
+
+  ia-module:
+    build: ./ia
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      waf_net:
+        ipv4_address: 10.89.1.40
+    restart: unless-stopped
+
+  siem:
+    build: ./siem
+    ports:
+      - "127.0.0.1:5001:5000"
+    environment:
+      - LOKI_URL=http://10.89.1.30:3100
+      - IA_URL=http://10.89.1.40:8000
+      - PROXY_URL=http://10.89.1.45:9000
+    networks:
+      waf_net:
+        ipv4_address: 10.89.1.50
+    restart: unless-stopped
+    depends_on:
+      - loki
+      - ia-module
+      - waf-ia-proxy
+
+volumes:
+  bw_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/luky/waf-project/bw_data
+  grafana_data:
+
+networks:
+  waf_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.89.1.0/24
+          gateway: 10.89.1.1

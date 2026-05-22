@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WAF SIEM — Security Operations Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+:root {
+  --bg:       #060b14;
+  --bg2:      #0b1220;
+  --bg3:      #0f1829;
+  --border:   #1a2f4a;
+  --border2:  #243d5c;
+  --green:    #00e5a0;
+  --green2:   #00b87d;
+  --red:      #ff3d5a;
+  --orange:   #ff8c42;
+  --yellow:   #f5c842;
+  --blue:     #3d9eff;
+  --purple:   #a855f7;
+  --cyan:     #22d3ee;
+  --text:     #c8daf0;
+  --text2:    #5d7a99;
+  --text3:    #3a5470;
+  --mono:     'Share Tech Mono', monospace;
+  --sans:     'Exo 2', sans-serif;
+  --glow-g:   0 0 12px rgba(0,229,160,.35);
+  --glow-r:   0 0 12px rgba(255,61,90,.35);
+  --glow-b:   0 0 12px rgba(61,158,255,.35);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  height: 56px;
+  background: linear-gradient(90deg, #060d1a 0%, #0b1828 100%);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-left { display: flex; align-items: center; gap: 16px; }
+
+.logo {
+  font-family: var(--mono);
+  font-size: 1rem;
+  color: var(--green);
+  letter-spacing: .15em;
+  text-shadow: var(--glow-g);
+}
+.logo span { color: var(--text2); }
+
+.nav-tabs { display: flex; gap: 4px; }
+.nav-tab {
+  font-family: var(--mono);
+  font-size: .7rem;
+  letter-spacing: .1em;
+  padding: 5px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--text2);
+  cursor: pointer;
+  transition: all .2s;
+  text-decoration: none;
+  background: transparent;
+}
+.nav-tab:hover { border-color: var(--green); color: var(--green); }
+.nav-tab.active { border-color: var(--green); color: var(--green); background: rgba(0,229,160,.07); }
+
+.header-right { display: flex; align-items: center; gap: 20px; }
+
+/* ── Period Selector ── */
+.period-selector { display: flex; align-items: center; gap: 8px; }
+.period-label { font-family: var(--mono); font-size: .7rem; color: var(--text2); }
+.period-btns { display: flex; gap: 2px; }
+.period-btn {
+  font-family: var(--mono);
+  font-size: .68rem;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+  transition: all .15s;
+  letter-spacing: .05em;
+}
+.period-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.period-btn.active { border-color: var(--green); color: var(--green); background: rgba(0,229,160,.1); box-shadow: var(--glow-g); }
+
+.status-dots { display: flex; gap: 14px; }
+.sdot { display: flex; align-items: center; gap: 6px; font-size: .72rem; color: var(--text2); font-family: var(--mono); }
+.sdot-circle {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--green); box-shadow: var(--glow-g);
+  animation: blink 2.5s infinite;
+}
+.sdot-circle.red { background: var(--red); box-shadow: var(--glow-r); }
+.sdot-circle.gray { background: var(--text3); box-shadow: none; animation: none; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.clock { font-family: var(--mono); font-size: .75rem; color: var(--text2); }
+
+/* ── Views ── */
+.view { display: none; }
+.view.active { display: block; }
+
+/* ── Dashboard Grid ── */
+.main { padding: 20px 24px; }
+
+/* KPI row */
+.kpi-row { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; margin-bottom: 18px; }
+@media(max-width:1400px){ .kpi-row { grid-template-columns: repeat(4,1fr); } }
+@media(max-width:800px){ .kpi-row { grid-template-columns: repeat(2,1fr); } }
+
+.kpi {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .2s;
+}
+.kpi:hover { border-color: var(--border2); }
+.kpi::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  border-radius: 8px 8px 0 0;
+}
+.kpi.c-red::after    { background: var(--red); box-shadow: var(--glow-r); }
+.kpi.c-orange::after { background: var(--orange); }
+.kpi.c-yellow::after { background: var(--yellow); }
+.kpi.c-green::after  { background: var(--green); box-shadow: var(--glow-g); }
+.kpi.c-blue::after   { background: var(--blue); box-shadow: var(--glow-b); }
+.kpi.c-purple::after { background: var(--purple); }
+.kpi.c-cyan::after   { background: var(--cyan); }
+
+.kpi-label { font-size: .65rem; letter-spacing: .12em; text-transform: uppercase; color: var(--text2); margin-bottom: 8px; }
+.kpi-val { font-family: var(--mono); font-size: 1.9rem; font-weight: 700; line-height: 1; }
+.kpi.c-red    .kpi-val { color: var(--red); text-shadow: var(--glow-r); }
+.kpi.c-orange .kpi-val { color: var(--orange); }
+.kpi.c-yellow .kpi-val { color: var(--yellow); }
+.kpi.c-green  .kpi-val { color: var(--green); text-shadow: var(--glow-g); }
+.kpi.c-blue   .kpi-val { color: var(--blue); text-shadow: var(--glow-b); }
+.kpi.c-purple .kpi-val { color: var(--purple); }
+.kpi.c-cyan   .kpi-val { color: var(--cyan); }
+.kpi-sub { font-size: .65rem; color: var(--text3); margin-top: 5px; }
+
+/* Content rows */
+.row { display: grid; gap: 14px; margin-bottom: 14px; }
+.row-3col { grid-template-columns: 2fr 1fr 1fr; }
+.row-2col { grid-template-columns: 1fr 1fr; }
+
+.panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+}
+.panel-title {
+  font-family: var(--mono);
+  font-size: .72rem;
+  letter-spacing: .12em;
+  color: var(--green);
+}
+.panel-body { padding: 14px; }
+
+/* Map */
+#map { height: 320px; }
+.leaflet-container { background: #060b14 !important; }
+
+/* Live feed */
+.live-feed { height: 320px; overflow-y: auto; }
+.feed-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  border-bottom: 1px solid rgba(26,47,74,.5);
+  font-size: .75rem;
+  animation: slideIn .25s ease;
+}
+@keyframes slideIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
+.feed-item:hover { background: rgba(255,255,255,.02); }
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  min-width: 58px;
+  text-align: center;
+  border: 1px solid;
+}
+.badge.SQLi       { color: var(--orange); border-color: var(--orange); background: rgba(255,140,66,.1); }
+.badge.XSS        { color: var(--yellow); border-color: var(--yellow); background: rgba(245,200,66,.1); }
+.badge.LFI        { color: var(--purple); border-color: var(--purple); background: rgba(168,85,247,.1); }
+.badge.RCE        { color: var(--red);    border-color: var(--red);    background: rgba(255,61,90,.1); }
+.badge.SSRF       { color: var(--blue);   border-color: var(--blue);   background: rgba(61,158,255,.1); }
+.badge.Zero-Day   { color: #ff0055;       border-color: #ff0055;       background: rgba(255,0,85,.1); }
+.badge.ModSec-Block { color: var(--cyan); border-color: var(--cyan);   background: rgba(34,211,238,.1); }
+.badge.UNKNOWN    { color: var(--text2);  border-color: var(--border2);background: rgba(93,122,153,.1); }
+
+/* Top IPs table */
+.ip-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+.ip-table th { color: var(--text3); font-weight: 400; text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: .65rem; letter-spacing: .1em; }
+.ip-table td { padding: 6px 8px; border-bottom: 1px solid rgba(26,47,74,.4); }
+.ip-table tr:hover td { background: rgba(255,255,255,.02); }
+.threat-bar { height: 3px; background: var(--border); border-radius: 2px; margin-top: 3px; }
+.threat-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--green), var(--red)); }
+
+/* IA comparison */
+.ia-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ia-box { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 14px; text-align: center; }
+.ia-box-label { font-size: .65rem; color: var(--text2); letter-spacing: .1em; margin-bottom: 8px; font-family: var(--mono); }
+.ia-box-val { font-family: var(--mono); font-size: 1.6rem; font-weight: 700; }
+.ia-box-sub { font-size: .62rem; color: var(--text3); margin-top: 4px; }
+
+/* Timeline chart */
+.chart-wrap { height: 220px; position: relative; }
+
+/* ══════════════════════════════════════════════
+   LOGS EXPLORER
+══════════════════════════════════════════════ */
+.logs-view { padding: 16px 24px; }
+
+.logs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+  border-bottom: none;
+}
+
+.logs-select, .logs-input {
+  background: var(--bg3);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 11px;
+  font-family: var(--mono);
+  font-size: .78rem;
+  transition: border-color .15s;
+  outline: none;
+}
+.logs-select:focus, .logs-input:focus { border-color: var(--green); }
+
+.logs-input { width: 260px; }
+.logs-input::placeholder { color: var(--text3); }
+
+.btn {
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: .73rem;
+  letter-spacing: .05em;
+  transition: all .15s;
+  background: transparent;
+}
+.btn-green { border-color: var(--green); color: var(--green); }
+.btn-green:hover { background: rgba(0,229,160,.1); box-shadow: var(--glow-g); }
+.btn-red { border-color: var(--red); color: var(--red); }
+.btn-red:hover { background: rgba(255,61,90,.1); }
+.btn-blue { border-color: var(--blue); color: var(--blue); }
+.btn-blue:hover { background: rgba(61,158,255,.1); }
+
+.log-stats-bar {
+  display: flex;
+  gap: 24px;
+  padding: 8px 16px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  font-size: .73rem;
+  font-family: var(--mono);
+}
+.lstat { display: flex; gap: 6px; }
+.lstat-k { color: var(--text3); }
+.lstat-v { font-weight: 700; }
+.lstat-v.r { color: var(--red); }
+.lstat-v.y { color: var(--yellow); }
+.lstat-v.g { color: var(--green); }
+.lstat-v.b { color: var(--blue); }
+
+.logs-table-wrap {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+  height: calc(100vh - 310px);
+  overflow-y: auto;
+}
+
+.log-row {
+  display: grid;
+  grid-template-columns: 148px 58px 68px 160px 1fr;
+  gap: 0;
+  align-items: baseline;
+  padding: 5px 12px;
+  border-bottom: 1px solid rgba(26,47,74,.3);
+  font-size: .75rem;
+  border-left: 3px solid transparent;
+  transition: background .1s;
+  cursor: default;
+}
+.log-row:hover { background: rgba(255,255,255,.025); }
+.log-row.ERROR  { border-left-color: var(--red); }
+.log-row.WARN   { border-left-color: var(--yellow); }
+.log-row.NOTICE { border-left-color: var(--blue); }
+.log-row.INFO   { border-left-color: var(--border); }
+
+.log-ts    { font-family: var(--mono); color: var(--text3); font-size: .7rem; white-space: nowrap; }
+.log-lvl-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: .62rem;
+  font-weight: 700;
+  border: 1px solid;
+  text-align: center;
+}
+.log-lvl-badge.ERROR  { color: var(--red);    border-color: var(--red);    background: rgba(255,61,90,.1); }
+.log-lvl-badge.WARN   { color: var(--yellow); border-color: var(--yellow); background: rgba(245,200,66,.1); }
+.log-lvl-badge.NOTICE { color: var(--blue);   border-color: var(--blue);   background: rgba(61,158,255,.1); }
+.log-lvl-badge.INFO   { color: var(--text3);  border-color: var(--border); background: transparent; }
+
+.log-atk-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: .62rem;
+  border: 1px solid transparent;
+}
+.log-atk-badge.BLOCKED    { color: var(--red);    border-color: rgba(255,61,90,.5); }
+.log-atk-badge.SQLi       { color: var(--orange); border-color: rgba(255,140,66,.5); }
+.log-atk-badge.XSS        { color: var(--yellow); border-color: rgba(245,200,66,.5); }
+.log-atk-badge.LFI        { color: var(--purple); border-color: rgba(168,85,247,.5); }
+.log-atk-badge._200       { color: var(--green);  border-color: rgba(0,229,160,.4); }
+
+.log-container-tag { color: var(--purple); font-family: var(--mono); font-size: .68rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.log-line-text { color: var(--text); font-family: var(--mono); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hl-403    { color: var(--red); font-weight: 700; }
+.hl-200    { color: var(--green); }
+.hl-sql    { color: var(--yellow); background: rgba(245,200,66,.1); padding: 0 2px; border-radius: 2px; }
+.hl-xss    { color: var(--orange); background: rgba(255,140,66,.1); padding: 0 2px; border-radius: 2px; }
+.hl-lfi    { color: var(--purple); background: rgba(168,85,247,.1); padding: 0 2px; border-radius: 2px; }
+.hl-modsec { color: var(--red); }
+
+.logs-empty { text-align: center; padding: 60px; color: var(--text3); font-family: var(--mono); }
+.logs-loading { text-align: center; padding: 60px; color: var(--text2); font-family: var(--mono); font-size: .85rem; }
+
+/* ── Pulse spinner ── */
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+@keyframes spin { to{transform:rotate(360deg)} }
+
+/* ── Donut legend ── */
+.donut-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: .7rem; }
+.dl-item { display: flex; align-items: center; gap: 5px; }
+.dl-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<!-- ═══════ HEADER ═══════ -->
+<header class="header">
+  <div class="header-left">
+    <div class="logo">🛡 WAF<span>/</span>SIEM</div>
+    <nav class="nav-tabs">
+      <a class="nav-tab active" onclick="switchView('dashboard',this)">DASHBOARD</a>
+      <a class="nav-tab" onclick="switchView('logs',this)">LOGS EXPLORER</a>
+    </nav>
+  </div>
+  <div class="header-right">
+    <div class="period-selector">
+      <span class="period-label">PÉRIODE :</span>
+      <div class="period-btns">
+        <button class="period-btn" data-p="15m"  onclick="setPeriod('15m',this)">15m</button>
+        <button class="period-btn" data-p="30m"  onclick="setPeriod('30m',this)">30m</button>
+        <button class="period-btn" data-p="1h"   onclick="setPeriod('1h',this)">1h</button>
+        <button class="period-btn" data-p="3h"   onclick="setPeriod('3h',this)">3h</button>
+        <button class="period-btn" data-p="6h"   onclick="setPeriod('6h',this)">6h</button>
+        <button class="period-btn" data-p="12h"  onclick="setPeriod('12h',this)">12h</button>
+        <button class="period-btn active" data-p="24h" onclick="setPeriod('24h',this)">24h</button>
+        <button class="period-btn" data-p="2d"   onclick="setPeriod('2d',this)">2j</button>
+        <button class="period-btn" data-p="7d"   onclick="setPeriod('7d',this)">7j</button>
+        <button class="period-btn" data-p="14d"  onclick="setPeriod('14d',this)">14j</button>
+        <button class="period-btn" data-p="30d"  onclick="setPeriod('30d',this)">30j</button>
+      </div>
+    </div>
+    <div class="status-dots">
+      <div class="sdot"><div class="sdot-circle" id="dot-bunkerweb"></div>BunkerWeb</div>
+      <div class="sdot"><div class="sdot-circle" id="dot-ia"></div>Module IA</div>
+      <div class="sdot"><div class="sdot-circle" id="dot-loki"></div>Loki</div>
+    </div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+</header>
+
+<!-- ═══════ DASHBOARD VIEW ═══════ -->
+<div class="view active" id="view-dashboard">
+<div class="main">
+
+  <!-- KPIs -->
+  <div class="kpi-row">
+    <div class="kpi c-red">
+      <div class="kpi-label">🔴 Bloquées</div>
+      <div class="kpi-val" id="k-blocked">--</div>
+      <div class="kpi-sub" id="k-period-label">Dernières 24h</div>
+    </div>
+    <div class="kpi c-orange">
+      <div class="kpi-label">🎯 SQLi</div>
+      <div class="kpi-val" id="k-sqli">--</div>
+      <div class="kpi-sub">SQL Injection</div>
+    </div>
+    <div class="kpi c-yellow">
+      <div class="kpi-label">⚡ XSS</div>
+      <div class="kpi-val" id="k-xss">--</div>
+      <div class="kpi-sub">Cross-Site Scripting</div>
+    </div>
+    <div class="kpi c-purple">
+      <div class="kpi-label">🗂 LFI</div>
+      <div class="kpi-val" id="k-lfi">--</div>
+      <div class="kpi-sub">Local File Inclusion</div>
+    </div>
+    <div class="kpi c-red">
+      <div class="kpi-label">💀 RCE</div>
+      <div class="kpi-val" id="k-rce">--</div>
+      <div class="kpi-sub">Remote Code Exec</div>
+    </div>
+    <div class="kpi c-blue">
+      <div class="kpi-label">🌐 SSRF</div>
+      <div class="kpi-val" id="k-ssrf">--</div>
+      <div class="kpi-sub">Server-Side RF</div>
+    </div>
+    <div class="kpi c-red">
+      <div class="kpi-label">⚠ Zero-Day</div>
+      <div class="kpi-val" id="k-zeroday">--</div>
+      <div class="kpi-sub">IA uniquement</div>
+    </div>
+    <div class="kpi c-green">
+      <div class="kpi-label">🤖 IA Rate</div>
+      <div class="kpi-val" id="k-ia-rate">--</div>
+      <div class="kpi-sub">Taux détection IA</div>
+    </div>
+  </div>
+
+  <!-- Map + Top IPs + IA vs ModSec -->
+  <div class="row row-3col">
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">🗺 CARTE DES ATTAQUES</span></div>
+      <div id="map"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">🔥 TOP IPs ATTAQUANTES</span></div>
+      <div class="panel-body" style="padding:0;">
+        <table class="ip-table">
+          <thead><tr><th>IP</th><th>PAYS</th><th>HITS</th></tr></thead>
+          <tbody id="ip-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">🤖 IA vs MODSECURITY</span></div>
+      <div class="panel-body">
+        <div class="ia-grid">
+          <div class="ia-box">
+            <div class="ia-box-label">MODSECURITY</div>
+            <div class="ia-box-val" style="color:var(--orange)" id="modsec-val">--</div>
+            <div class="ia-box-sub">OWASP CRS v4</div>
+          </div>
+          <div class="ia-box">
+            <div class="ia-box-label">MODULE IA</div>
+            <div class="ia-box-val" style="color:var(--green)" id="ia-val">--</div>
+            <div class="ia-box-sub">FastAPI ML</div>
+          </div>
+        </div>
+        <div style="margin-top:14px;">
+          <div style="font-family:var(--mono);font-size:.65rem;color:var(--text2);letter-spacing:.1em;margin-bottom:10px;">RÉPARTITION</div>
+          <canvas id="donut-chart" height="130"></canvas>
+          <div class="donut-legend" id="donut-legend"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timeline + Live feed -->
+  <div class="row row-2col">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">📈 TIMELINE DES ATTAQUES</span>
+        <span style="font-family:var(--mono);font-size:.65rem;color:var(--text3)" id="tl-period"></span>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap"><canvas id="timeline-chart"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">🔴 FLUX EN TEMPS RÉEL</span>
+        <span id="live-spinner" style="display:none"><span class="spinner"></span></span>
+      </div>
+      <div class="live-feed" id="live-feed">
+        <div class="logs-loading"><span class="spinner"></span>Chargement…</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══════ LOGS EXPLORER VIEW ═══════ -->
+<div class="view" id="view-logs">
+<div class="logs-view">
+
+  <div class="logs-toolbar">
+    <select class="logs-select" id="log-container">
+      <option value="waf-project-bunkerweb-1">🛡 BunkerWeb</option>
+      <option value="waf-project-bw-scheduler-1">⚙ Scheduler</option>
+      <option value="waf-project-ia-module-1">🤖 Module IA</option>
+      <option value="waf-project-promtail-1">📡 Promtail</option>
+      <option value="waf-project-loki-1">🗄 Loki</option>
+      <option value="waf-project-grafana-1">📊 Grafana</option>
+      <option value="waf-project-siem-1">🖥 SIEM</option>
+      <option value="bwapp">🎯 bWAPP</option>
+    </select>
+
+    <select class="logs-select" id="log-level">
+      <option value="">Tous niveaux</option>
+      <option value="ERROR">🔴 ERROR</option>
+      <option value="WARN">🟡 WARN</option>
+      <option value="NOTICE">🔵 NOTICE</option>
+      <option value="INFO">⚪ INFO</option>
+    </select>
+
+    <select class="logs-select" id="log-attack">
+      <option value="">Tous types</option>
+      <option value="BLOCKED">🚫 BLOQUÉ</option>
+      <option value="SQLi">🎯 SQLi</option>
+      <option value="XSS">⚡ XSS</option>
+      <option value="LFI">🗂 LFI</option>
+      <option value="200">✅ 200 OK</option>
+    </select>
+
+    <input type="text" class="logs-input" id="log-search" placeholder="🔍  Rechercher dans les logs…">
+
+    <select class="logs-select" id="log-limit">
+      <option value="50">50 lignes</option>
+      <option value="100">100 lignes</option>
+      <option value="200">200 lignes</option>
+      <option value="500" selected>500 lignes</option>
+      <option value="1000">1000 lignes</option>
+      <option value="2000">2000 lignes</option>
+      <option value="5000">5000 lignes</option>
+    </select>
+
+    <button class="btn btn-green" onclick="loadLogs()">⟳ Actualiser</button>
+    <button class="btn btn-red"   onclick="clearLogFilters()">✕ Effacer</button>
+    <button class="btn btn-blue"  onclick="exportLogs()">↓ Exporter</button>
+
+    <span id="log-count-badge" style="font-family:var(--mono);font-size:.7rem;color:var(--text2);background:var(--bg3);border:1px solid var(--border);padding:4px 10px;border-radius:10px;">0 logs</span>
+  </div>
+
+  <div class="log-stats-bar">
+    <div class="lstat"><span class="lstat-k">Total :</span><span class="lstat-v b" id="ls-total">0</span></div>
+    <div class="lstat"><span class="lstat-k">Erreurs :</span><span class="lstat-v r" id="ls-errors">0</span></div>
+    <div class="lstat"><span class="lstat-k">Warnings :</span><span class="lstat-v y" id="ls-warns">0</span></div>
+    <div class="lstat"><span class="lstat-k">Bloqués :</span><span class="lstat-v r" id="ls-blocked">0</span></div>
+    <div class="lstat"><span class="lstat-k">200 OK :</span><span class="lstat-v g" id="ls-ok">0</span></div>
+    <div class="lstat"><span class="lstat-k">Dernière MAJ :</span><span class="lstat-v" id="ls-time">--</span></div>
+  </div>
+
+  <div class="logs-table-wrap" id="logs-table">
+    <div class="logs-loading"><span class="spinner"></span>Chargement des logs…</div>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══════ SCRIPTS ═══════ -->
+<script>
+/* ── State ── */
+let currentPeriod = '24h';
+let allLogs       = [];
+let donutChart    = null;
+let timelineChart = null;
+let mapMarkers    = [];
+const wafMap      = L.map('map').setView([20, 0], 2);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© CartoDB', subdomains: 'abcd'
+}).addTo(wafMap);
+
+const attackIcon = L.divIcon({
+  html: '<div style="width:9px;height:9px;background:#ff3d5a;border-radius:50%;border:1.5px solid #ff8ca0;box-shadow:0 0 8px #ff3d5a88;"></div>',
+  iconSize: [9, 9], className: ''
+});
+
+/* ── Clock ── */
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('fr-FR');
+}, 1000);
+
+/* ── View switcher ── */
+function switchView(name, el) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  el.classList.add('active');
+  if (name === 'logs') loadLogs();
+}
+
+/* ── Period selector ── */
+const PERIOD_LABELS = {
+  '15m':'Dernières 15 min','30m':'Dernières 30 min',
+  '1h':'Dernière heure','3h':'Dernières 3h',
+  '6h':'Dernières 6h','12h':'Dernières 12h',
+  '24h':'Dernières 24h','2d':'2 derniers jours',
+  '7d':'7 derniers jours','14d':'14 derniers jours',
+  '30d':'30 derniers jours'
+};
+
+function setPeriod(p, btn) {
+  currentPeriod = p;
+  document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('k-period-label').textContent = PERIOD_LABELS[p] || p;
+  document.getElementById('tl-period').textContent = PERIOD_LABELS[p] || p;
+  // sync logs period select if in logs view
+  loadStats();
+  loadTopIPs();
+}
+
+/* ── Health check ── */
+async function checkHealth() {
+  try {
+    const r = await fetch('/api/health');
+    const d = await r.json();
+    document.getElementById('dot-bunkerweb').className = 'sdot-circle';
+    document.getElementById('dot-loki').className      = d.loki ? 'sdot-circle' : 'sdot-circle gray';
+    document.getElementById('dot-ia').className        = d.ia   ? 'sdot-circle' : 'sdot-circle gray';
+  } catch(e) {
+    ['dot-bunkerweb','dot-loki','dot-ia'].forEach(id =>
+      document.getElementById(id).className = 'sdot-circle red'
+    );
+  }
+}
+
+/* ── Colors ── */
+const TYPE_COLORS = {
+  'SQLi':'#ff8c42','XSS':'#f5c842','LFI':'#a855f7',
+  'RCE':'#ff3d5a','SSRF':'#3d9eff','Zero-Day':'#ff0055',
+  'ModSec-Block':'#22d3ee','UNKNOWN':'#3a5470'
+};
+
+/* ── Stats / Dashboard ── */
+async function loadStats() {
+  try {
+    const r = await fetch(`/api/stats?period=${currentPeriod}`);
+    const d = await r.json();
+    const at = d.attack_types || {};
+
+    document.getElementById('k-blocked').textContent  = d.total_blocked ?? 0;
+    document.getElementById('k-sqli').textContent     = at['SQLi']       ?? 0;
+    document.getElementById('k-xss').textContent      = at['XSS']        ?? 0;
+    document.getElementById('k-lfi').textContent      = at['LFI']        ?? 0;
+    document.getElementById('k-rce').textContent      = at['RCE']        ?? 0;
+    document.getElementById('k-ssrf').textContent     = at['SSRF']       ?? 0;
+    document.getElementById('k-zeroday').textContent  = at['Zero-Day']   ?? 0;
+    document.getElementById('k-ia-rate').textContent  = d.ia_stats?.block_rate ?? '0%';
+    document.getElementById('modsec-val').textContent = d.total_blocked   ?? 0;
+    document.getElementById('ia-val').textContent     = d.ia_stats?.total_blocked ?? 0;
+
+    // Donut
+    const labels = Object.keys(at);
+    const vals   = Object.values(at);
+    const colors = labels.map(l => TYPE_COLORS[l] || '#3a5470');
+    if (donutChart) donutChart.destroy();
+    donutChart = new Chart(document.getElementById('donut-chart'), {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data: vals, backgroundColor: colors, borderWidth: 0, hoverOffset: 4 }] },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        cutout: '65%'
+      }
+    });
+    const leg = document.getElementById('donut-legend');
+    leg.innerHTML = labels.map((l,i) =>
+      `<div class="dl-item"><div class="dl-dot" style="background:${colors[i]}"></div><span style="color:var(--text2)">${l}: <b style="color:var(--text)">${vals[i]}</b></span></div>`
+    ).join('');
+
+    // Timeline
+    const tl = d.timeline || {};
+    if (timelineChart) timelineChart.destroy();
+    timelineChart = new Chart(document.getElementById('timeline-chart'), {
+      type: 'line',
+      data: {
+        labels: Object.keys(tl),
+        datasets: [{
+          label: 'Attaques bloquées',
+          data: Object.values(tl),
+          borderColor: '#ff3d5a',
+          backgroundColor: 'rgba(255,61,90,.08)',
+          fill: true,
+          tension: .4,
+          pointRadius: 3,
+          pointBackgroundColor: '#ff3d5a'
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { color: '#3a5470', maxRotation: 45, font: { family: 'Share Tech Mono', size: 10 } }, grid: { color: '#1a2f4a' } },
+          y: { ticks: { color: '#3a5470', font: { family: 'Share Tech Mono', size: 10 } }, grid: { color: '#1a2f4a' }, beginAtZero: true }
+        },
+        plugins: { legend: { display: false } }
+      }
+    });
+  } catch(e) { console.error('Stats error', e); }
+}
+
+/* ── Top IPs + Carte ── */
+async function loadTopIPs() {
+  try {
+    const r   = await fetch(`/api/top_ips_geo?period=${currentPeriod}`);
+    const ips = await r.json();
+
+    // Clear old markers
+    mapMarkers.forEach(m => wafMap.removeLayer(m));
+    mapMarkers = [];
+
+    const tbody  = document.getElementById('ip-table-body');
+    tbody.innerHTML = '';
+    const maxCnt = ips[0]?.count || 1;
+
+    ips.forEach(item => {
+      const pct = (item.count / maxCnt * 100).toFixed(0);
+      const tr  = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="color:var(--cyan);font-family:var(--mono);font-size:.73rem">${item.flag} ${item.ip}</td>
+        <td style="color:var(--text2);font-size:.72rem">${item.city}</td>
+        <td style="color:var(--red);font-family:var(--mono)">
+          ${item.count}
+          <div class="threat-bar"><div class="threat-fill" style="width:${pct}%"></div></div>
+        </td>`;
+      tbody.appendChild(tr);
+
+      if (item.lat && item.lon) {
+        const m = L.marker([item.lat, item.lon], { icon: attackIcon })
+          .addTo(wafMap)
+          .bindPopup(`<b style="color:#ff3d5a">${item.flag} ${item.ip}</b><br>${item.city}, ${item.country}<br><b>${item.count} attaques</b>`);
+        mapMarkers.push(m);
+      }
+    });
+  } catch(e) { console.error('TopIPs error', e); }
+}
+
+/* ── Live feed ── */
+async function loadLive() {
+  try {
+    const r  = await fetch(`/api/live?period=${currentPeriod}`);
+    const data = await r.json();
+    const feed = document.getElementById('live-feed');
+    if (!data.length) return;
+    feed.innerHTML = '';
+    data.forEach(a => {
+      const div = document.createElement('div');
+      div.className = 'feed-item';
+      const cls = (a.attack_type || 'UNKNOWN').replace('-', '\\-');
+      div.innerHTML = `
+        <span class="badge ${a.attack_type || 'UNKNOWN'}">${a.attack_type || '?'}</span>
+        <span style="color:var(--cyan);font-family:var(--mono);min-width:105px;font-size:.73rem">${a.ip}</span>
+        <span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.73rem">${a.url}</span>`;
+      feed.appendChild(div);
+    });
+  } catch(e) {}
+}
+
+/* ══════════════════════════════════════
+   LOGS EXPLORER
+══════════════════════════════════════ */
+function highlightLine(line) {
+  return line
+    .replace(/\b(403)\b/g, '<span class="hl-403">$1</span>')
+    .replace(/\b(200)\b/g, '<span class="hl-200">$1</span>')
+    .replace(/(UNION|SELECT|DROP|INSERT|DELETE)/gi, '<span class="hl-sql">$1</span>')
+    .replace(/(<script|alert\(|onerror)/gi, '<span class="hl-xss">$1</span>')
+    .replace(/(\.\.\/|etc\/passwd|etc\/shadow)/gi, '<span class="hl-lfi">$1</span>')
+    .replace(/(ModSecurity: Access denied|Access denied with code)/gi, '<span class="hl-modsec">$1</span>');
+}
+
+async function loadLogs() {
+  const container = document.getElementById('log-container').value;
+  const limit     = document.getElementById('log-limit').value;
+  const wrap      = document.getElementById('logs-table');
+  wrap.innerHTML  = '<div class="logs-loading"><span class="spinner"></span>Chargement des logs…</div>';
+
+  try {
+    const r  = await fetch(`/api/logs?container=${container}&period=${currentPeriod}&limit=${limit}`);
+    allLogs  = await r.json();
+    applyLogFilters();
+  } catch(e) {
+    wrap.innerHTML = '<div class="logs-empty">❌ Erreur de connexion à Loki</div>';
+  }
+}
+
+function applyLogFilters() {
+  const level  = document.getElementById('log-level').value;
+  const attack = document.getElementById('log-attack').value;
+  const search = document.getElementById('log-search').value.toLowerCase();
+
+  const filtered = allLogs.filter(log => {
+    if (level  && log.level       !== level)  return false;
+    if (attack && log.attack_type !== attack) return false;
+    if (search && !log.line.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  // Counters
+  document.getElementById('ls-total').textContent   = filtered.length;
+  document.getElementById('ls-errors').textContent  = filtered.filter(l => l.level === 'ERROR').length;
+  document.getElementById('ls-warns').textContent   = filtered.filter(l => l.level === 'WARN').length;
+  document.getElementById('ls-blocked').textContent = filtered.filter(l => l.attack_type === 'BLOCKED' || l.attack_type === 'SQLi' || l.attack_type === 'XSS' || l.attack_type === 'LFI').length;
+  document.getElementById('ls-ok').textContent      = filtered.filter(l => l.attack_type === '200').length;
+  document.getElementById('ls-time').textContent    = new Date().toLocaleTimeString('fr-FR');
+  document.getElementById('log-count-badge').textContent = `${filtered.length} logs`;
+
+  const wrap = document.getElementById('logs-table');
+  if (!filtered.length) {
+    wrap.innerHTML = '<div class="logs-empty">📭 Aucun log trouvé</div>';
+    return;
+  }
+
+  wrap.innerHTML = filtered.map(log => `
+    <div class="log-row ${log.level}">
+      <span class="log-ts">${log.timestamp}</span>
+      <span class="log-lvl-badge ${log.level}">${log.level}</span>
+      <span class="log-atk-badge ${log.attack_type || ''}">${log.attack_type || '—'}</span>
+      <span class="log-container-tag">${log.container.replace('waf-project-','')}</span>
+      <span class="log-line-text">${highlightLine(log.line.substring(0, 320))}</span>
+    </div>`
+  ).join('');
+}
+
+function clearLogFilters() {
+  document.getElementById('log-level').value  = '';
+  document.getElementById('log-attack').value = '';
+  document.getElementById('log-search').value = '';
+  applyLogFilters();
+}
+
+function exportLogs() {
+  const level  = document.getElementById('log-level').value;
+  const search = document.getElementById('log-search').value.toLowerCase();
+  const data   = allLogs.filter(l => {
+    if (level  && l.level !== level) return false;
+    if (search && !l.line.toLowerCase().includes(search)) return false;
+    return true;
+  });
+  const text = data.map(l => `[${l.timestamp}] [${l.level}] ${l.line}`).join('\n');
+  const url  = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+  const a    = Object.assign(document.createElement('a'), {
+    href: url, download: `waf-logs-${new Date().toISOString().slice(0,10)}.txt`
+  });
+  a.click();
+}
+
+/* ── Event listeners ── */
+document.getElementById('log-level').addEventListener('change',   applyLogFilters);
+document.getElementById('log-attack').addEventListener('change',  applyLogFilters);
+document.getElementById('log-search').addEventListener('input',   applyLogFilters);
+document.getElementById('log-container').addEventListener('change', loadLogs);
+document.getElementById('log-limit').addEventListener('change',   loadLogs);
+
+/* ── Init ── */
+checkHealth();
+loadStats();
+loadTopIPs();
+loadLive();
+setInterval(loadLive,   8000);
+setInterval(loadStats,  30000);
+setInterval(checkHealth, 15000);
+</script>
+</body>
+</html>

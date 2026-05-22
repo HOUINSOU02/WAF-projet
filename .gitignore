@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv
+venv/
+env/
+
+# Project specific
+bw_data/
+monitoring/loki-data/
+.env
+*.log
+.DS_Store

@@ -1,0 +1,119 @@
+{
+  "title": "WAF Security Dashboard",
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "🔴 Attaques Bloquées en Temps Réel",
+      "type": "logs",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+      "datasource": {"type": "loki", "uid": "P8E80F9AEF21F6940"},
+      "targets": [{
+        "expr": "{container=\"waf-project-bunkerweb-1\"} |= \"403\"",
+        "refId": "A"
+      }],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 2,
+      "title": "🔢 Total Attaques Bloquées",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 8},
+      "datasource": {"type": "loki", "uid": "P8E80F9AEF21F6940"},
+      "targets": [{"expr": "sum(count_over_time({container=\"waf-project-bunkerweb-1\"} |= \"403\" [24h]))", "refId": "A"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "red"}}}
+    },
+    {
+      "id": 3,
+      "title": "🎯 SQLi",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 8},
+      "datasource": {"type": "loki", "uid": "P8E80F9AEF21F6940"},
+      "targets": [{"expr": "sum(count_over_time({container=\"waf-project-bunkerweb-1\"} |= \"403\" |= \"UNION\" [24h]))", "refId": "A"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "orange"}}}
+    },
+    {
+      "id": 4,
+      "title": "⚡ XSS",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 8},
+      "datasource": {"type": "loki", "uid": "P8E80F9AEF21F6940"},
+      "targets": [{"expr": "sum(count_over_time({container=\"waf-project-bunkerweb-1\"} |= \"403\" |= \"script\" [24h]))", "refId": "A"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "yellow"}}}
+    },
+    {
+      "id": 5,
+      "title": "🗂️ LFI",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 8},
+      "datasource": {"type": "loki", "uid": "P8E80F9AEF21F6940"},
+      "targets": [{"expr": "sum(count_over_time({container=\"waf-project-bunkerweb-1\"} |= \"403\" |= \"passwd\" [24h]))", "refId": "A"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "purple"}}}
+    },
+    {
+      "id": 8,
+      "title": "💀 Command Injection",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 8},
+      "datasource": {"type": "loki", "uid": "P8E80F9AEF21F6940"},
+      "targets": [{"expr": "sum(count_over_time({container=\"waf-project-bunkerweb-1\"} |= \"403\" |= \"shadow\" [24h]))", "refId": "A"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "dark-red"}}}
+    },
+    {
+      "id": 9,
+      "title": "⚠️ Score Anomalie Moyen",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 8},
+      "datasource": {"type": "loki", "uid": "P8E80F9AEF21F6940"},
+      "targets": [{"expr": "sum(count_over_time({container=\"waf-project-bunkerweb-1\"} |= \"Anomaly Score\" [24h]))", "refId": "A"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "blue"}}}
+    },
+    {
+      "id": 6,
+      "title": "📈 Timeline des Attaques par Type",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
+      "datasource": {"type": "loki", "uid": "P8E80F9AEF21F6940"},
+      "targets": [
+        {"expr": "sum(count_over_time({container=\"waf-project-bunkerweb-1\"} |= \"UNION\" |= \"403\" [1m]))", "refId": "A", "legendFormat": "SQLi"},
+        {"expr": "sum(count_over_time({container=\"waf-project-bunkerweb-1\"} |= \"script\" |= \"403\" [1m]))", "refId": "B", "legendFormat": "XSS"},
+        {"expr": "sum(count_over_time({container=\"waf-project-bunkerweb-1\"} |= \"passwd\" |= \"403\" [1m]))", "refId": "C", "legendFormat": "LFI"},
+        {"expr": "sum(count_over_time({container=\"waf-project-bunkerweb-1\"} |= \"shadow\" |= \"403\" [1m]))", "refId": "D", "legendFormat": "Command Injection"}
+      ],
+      "fieldConfig": {
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "SQLi"}, "properties": [{"id": "color", "value": {"fixedColor": "orange", "mode": "fixed"}}]},
+          {"matcher": {"id": "byName", "options": "XSS"}, "properties": [{"id": "color", "value": {"fixedColor": "yellow", "mode": "fixed"}}]},
+          {"matcher": {"id": "byName", "options": "LFI"}, "properties": [{"id": "color", "value": {"fixedColor": "purple", "mode": "fixed"}}]},
+          {"matcher": {"id": "byName", "options": "Command Injection"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]}
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "title": "🔥 Logs ModSecurity — Score Anomalie",
+      "type": "logs",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
+      "datasource": {"type": "loki", "uid": "P8E80F9AEF21F6940"},
+      "targets": [{"expr": "{container=\"waf-project-bunkerweb-1\"} |= \"Anomaly Score\"", "refId": "A"}],
+      "options": {"showTime": true, "wrapLogMessage": true, "sortOrder": "Descending"}
+    },
+    {
+      "id": 10,
+      "title": "🤖 Module IA — Logs de Détection",
+      "type": "logs",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 28},
+      "datasource": {"type": "loki", "uid": "P8E80F9AEF21F6940"},
+      "targets": [{"expr": "{container=\"waf-project-ia-module-1\"}", "refId": "A"}],
+      "options": {"showTime": true, "wrapLogMessage": true, "sortOrder": "Descending"}
+    }
+  ],
+  "time": {"from": "now-1h", "to": "now"},
+  "refresh": "10s",
+  "schemaVersion": 36
+}
