@@ -7,14 +7,15 @@ Sinon         → forwarded vers bWAPP
 
 from flask import Flask, request, Response, jsonify
 import requests
+import os
 import logging
 import json
 from datetime import datetime
 
 app = Flask(__name__)
 
-IA_URL   = "http://10.89.1.40:8000"
-BWAPP_URL = "http://10.89.1.20:80"
+IA_URL    = os.getenv("IA_URL", "http://ia-module:8000")
+BWAPP_URL = os.getenv("BWAPP_URL", "http://bwapp:80")
 
 # Stats en mémoire
 stats = {
@@ -42,9 +43,11 @@ def analyze(ip, method, url, headers, body):
             "headers": dict(headers),
             "body":    body
         }, timeout=2)
-        return r.json()
+        res = r.json()
+        log.info(f"IA Result: score={res.get('anomaly_score')} blocked={res.get('blocked')} for {url}")
+        return res
     except Exception as e:
-        log.warning(f"Module IA injoignable : {e}")
+        log.error(f"CRITICAL: Module IA injoignable à {IA_URL}. Error: {e}")
         return None
 
 
@@ -176,7 +179,7 @@ def proxy(path):
 
 
 if __name__ == '__main__':
-    log.info("Proxy WAF-IA démarré sur 0.0.0.0:9000")
+    log.info("Proxy WAF-IA démarré sur 10.89.1.45:9000")
     log.info(f"  → Module IA  : {IA_URL}")
     log.info(f"  → bWAPP      : {BWAPP_URL}")
-    app.run(host='0.0.0.0', port=9000, threaded=True)
+    app.run(host='10.89.1.45', port=9000, threaded=True)

@@ -3,17 +3,28 @@ services:
   bunkerweb:
     image: bunkerity/bunkerweb:1.6.9
     ports:
-      - "127.0.0.1:8080:8080"
-      - "127.0.0.1:8443:8443"
+      - "0.0.0.0:8080:8080"
+      - "0.0.0.0:8443:8443"
     environment:
       - SERVER_NAME=localhost
       - API_WHITELIST_IP=127.0.0.0/8 10.89.1.0/24 10.88.0.0/16 172.16.0.0/12
       - USE_MODSECURITY=yes
+      - MODSECURITY_MODE=blocking
       - USE_MODSECURITY_CRS=yes
       - USE_REVERSE_PROXY=yes
       - REVERSE_PROXY_URL=/
+      # Configuration du Rate Limiting
+      - USE_LIMIT_REQ=yes
+      - LIMIT_REQ_RATE=5r/s
+      - LIMIT_REQ_BURST=10
+      # Autoriser la simulation d'IP via X-Forwarded-For pour les tests
+      - USE_REAL_IP=yes
+      - REAL_IP_HEADER=X-Forwarded-For
+      - REAL_IP_FROM=127.0.0.1 10.89.1.0/24 172.16.0.0/12
       # Pointe vers le proxy IA au lieu de bWAPP directement
       - REVERSE_PROXY_HOST=http://waf-ia-proxy:9000
+    cap_add:
+      - NET_RAW
     volumes:
       - bw_data:/data
     networks:
@@ -37,7 +48,7 @@ services:
   bw-ui:
     image: bunkerity/bunkerweb-ui:1.6.9
     ports:
-      - "127.0.0.1:7000:7000"
+      - "0.0.0.0:7000:7000"
     environment:
       - ADMIN_USERNAME=${BW_ADMIN_USER:-admin}
       - ADMIN_PASSWORD=${BW_ADMIN_PASSWORD}
@@ -50,7 +61,8 @@ services:
   bwapp:
     image: raesene/bwapp
     container_name: bwapp
-    # Plus exposé directement — accessible uniquement via le proxy IA
+    ports:
+      - "0.0.0.0:8888:80"
     environment:
       - MYSQL_ROOT_PASSWORD=bwapp
     networks:
@@ -65,6 +77,10 @@ services:
     environment:
       - MYSQL_ROOT_PASSWORD=bwapp
       - MYSQL_DATABASE=bwapp
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
     networks:
       waf_net:
         ipv4_address: 10.89.1.21
@@ -76,7 +92,7 @@ services:
       dockerfile: Dockerfile
     container_name: waf-ia-proxy
     ports:
-      - "127.0.0.1:9000:9000"
+      - "0.0.0.0:9000:9000"
     environment:
       - IA_URL=http://10.89.1.40:8000
       - BWAPP_URL=http://10.89.1.20:80
@@ -92,7 +108,7 @@ services:
   loki:
     image: grafana/loki:3.4.2
     ports:
-      - "127.0.0.1:3100:3100"
+      - "0.0.0.0:3100:3100"
     volumes:
       - ./monitoring/loki-data:/loki-data
       - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
@@ -114,7 +130,7 @@ services:
   grafana:
     image: grafana/grafana:11.6.0
     ports:
-      - "127.0.0.1:3000:3000"
+      - "0.0.0.0:3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
@@ -130,7 +146,7 @@ services:
   ia-module:
     build: ./ia
     ports:
-      - "127.0.0.1:8000:8000"
+      - "0.0.0.0:8000:8000"
     networks:
       waf_net:
         ipv4_address: 10.89.1.40
@@ -139,7 +155,7 @@ services:
   siem:
     build: ./siem
     ports:
-      - "127.0.0.1:5001:5000"
+      - "0.0.0.0:5001:5000"
     environment:
       - LOKI_URL=http://10.89.1.30:3100
       - IA_URL=http://10.89.1.40:8000
@@ -164,6 +180,7 @@ volumes:
 
 networks:
   waf_net:
+    name: waf_net
     driver: bridge
     ipam:
       config:

@@ -2,7 +2,7 @@ auth_enabled: false
 
 server:
   http_listen_port: 3100
-  http_listen_address: 0.0.0.0
+  http_listen_address: 10.89.1.30
 
 common:
   path_prefix: /loki

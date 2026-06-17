@@ -52,10 +52,11 @@ Fonctionnalités clés :
    nano .env
    ```
 
-2. **Démarrage des services** :
+2. **Déploiement et orchestration** :
+   Le déploiement est automatisé par le script `start.sh`, qui gère le nettoyage, la construction des images locales (Proxy, IA, SIEM) et les healthchecks post-démarrage :
    ```bash
    cd waf-project
-   ./start.sh
+   chmod +x start.sh && ./start.sh
    #pour lancer des attaques
    attack_sim.
 

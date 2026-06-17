@@ -13,6 +13,16 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# Liste d'IPs publiques pour simuler différentes provenances (Géo-IP)
+IPS=(
+    "8.8.8.8"          # USA (Google)
+    "51.159.24.101"    # France (Scaleway)
+    "1.33.1.1"         # Japon
+    "78.46.1.1"        # Allemagne (Hetzner)
+    "185.199.108.153"  # USA (GitHub)
+    "1.1.1.1"          # Australie (Cloudflare)
+)
+
 ok=0
 blocked=0
 total=0
@@ -26,20 +36,25 @@ fire() {
 
     total=$((total+1))
 
+    # Sélection d'une IP aléatoire pour cette requête
+    RANDOM_IP=${IPS[$RANDOM % ${#IPS[@]}]}
+
     if [ "$method" = "POST" ]; then
         STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -X POST "$TARGET$url" \
             --data "$data" \
             -H "User-Agent: Mozilla/5.0 (AttackSim)" \
+            -H "X-Forwarded-For: $RANDOM_IP" \
             --max-time 5 2>/dev/null)
     else
         STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -X GET "$TARGET$url" \
             -H "User-Agent: Mozilla/5.0 (AttackSim)" \
+            -H "X-Forwarded-For: $RANDOM_IP" \
             --max-time 5 2>/dev/null)
     fi
 
-    if [ "$STATUS" = "403" ] || [ "$STATUS" = "400" ]; then
+    if [ "$STATUS" = "403" ] || [ "$STATUS" = "400" ] || [ "$STATUS" = "429" ]; then
         blocked=$((blocked+1))
         echo -e "${RED}[BLOCKED $STATUS]${NC} ${YELLOW}[$type]${NC} $desc"
     elif [ "$STATUS" = "000" ]; then

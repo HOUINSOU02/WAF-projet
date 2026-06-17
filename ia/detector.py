@@ -1,6 +1,8 @@
 import re
 import numpy as np
 from collections import defaultdict
+import time
+from urllib.parse import unquote_plus
 
 PATTERNS = {
     "SQLi": [
@@ -33,16 +35,17 @@ PATTERNS = {
 ip_behavior = defaultdict(lambda: {
     "request_count": 0,
     "blocked_count": 0,
-    "attack_types": []
+    "attack_types": [],
+    "last_request": 0
 })
 
 def extract_features(url: str, body: str, headers: dict) -> dict:
-    text = f"{url} {body}"
+    text = unquote_plus(f"{url} {body}")
     features = {
         "length": len(text),
-        "special_chars": len(re.findall(r'[<>\'";(){}]', text)),
+        "special_chars": len(re.findall(r'[<>\'";(){}=#\-*+./]', text)),
         "encoded_chars": len(re.findall(r'%[0-9a-fA-F]{2}', text)),
-        "sql_keywords": len(re.findall(r'(?i)(select|union|insert|delete|drop|update|where)', text)),
+        "sql_keywords": len(re.findall(r'(?i)\b(select|union|insert|delete|drop|update|where|and|or|from|limit|information_schema|table_name|into)\b', text)),
         "js_keywords": len(re.findall(r'(?i)(script|alert|onerror|onload|javascript|cookie)', text)),
         "path_traversal": len(re.findall(r'\.\./', text)),
         "cmd_injection": len(re.findall(r'[;&|`$]', text)),
@@ -53,12 +56,12 @@ def extract_features(url: str, body: str, headers: dict) -> dict:
 def calculate_anomaly_score(features: dict) -> float:
     score = 0.0
 
-    if features["special_chars"] > 3:
-        score += features["special_chars"] * 3
+    if features["special_chars"] > 1:
+        score += features["special_chars"] * 5
     if features["encoded_chars"] > 3:
         score += features["encoded_chars"] * 3
     if features["sql_keywords"] > 0:
-        score += features["sql_keywords"] * 15
+        score += features["sql_keywords"] * 30
     if features["js_keywords"] > 0:
         score += features["js_keywords"] * 13
     if features["path_traversal"] > 1:
@@ -73,7 +76,7 @@ def calculate_anomaly_score(features: dict) -> float:
     return min(score, 100.0)
 
 def detect_attack_type(url: str, body: str) -> list:
-    text = f"{url} {body}"
+    text = unquote_plus(f"{url} {body}")
     detected = []
     for attack_type, patterns in PATTERNS.items():
         for pattern in patterns:
@@ -91,13 +94,24 @@ def is_zero_day_candidate(features: dict, attack_types: list) -> bool:
 
 def analyze_request(ip: str, method: str, url: str,
                     headers: dict, body: str) -> dict:
+    current_time = time.time()
     ip_behavior[ip]["request_count"] += 1
+    
+    # Calcul de la vitesse (requêtes par seconde)
+    time_diff = current_time - ip_behavior[ip]["last_request"]
+    ip_behavior[ip]["last_request"] = current_time
 
     features = extract_features(url, body, headers)
     anomaly_score = calculate_anomaly_score(features)
-    features["anomaly_score"] = anomaly_score
+    
+    # Pénalité si l'IP bombarde (vitesse élevée)
+    if time_diff < 0.2: # Plus de 5 req/s
+        anomaly_score += 20
 
+    features["anomaly_score"] = anomaly_score
     attack_types = detect_attack_type(url, body)
+    if time_diff < 0.2:
+        attack_types.append("BRUTE-FORCE")
 
     false_positive_risk = "low"
     if anomaly_score > 50 and len(attack_types) == 1 and "UNKNOWN" in attack_types:

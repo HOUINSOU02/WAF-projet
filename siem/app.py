@@ -7,9 +7,9 @@ from collections import defaultdict
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
-LOKI_URL   = os.getenv("LOKI_URL",   "http://10.89.1.30:3100")
-IA_URL     = os.getenv("IA_URL",     "http://10.89.1.40:8000")
-PROXY_URL  = os.getenv("PROXY_URL",  "http://10.89.1.45:9000")
+LOKI_URL   = os.getenv("LOKI_URL",   "http://loki:3100")
+IA_URL     = os.getenv("IA_URL",     "http://ia-module:8000")
+PROXY_URL  = os.getenv("PROXY_URL",  "http://waf-ia-proxy:9000")
 
 # Utilisation d'une session pour réutiliser les connexions TCP
 http_session = requests.Session()
@@ -51,7 +51,7 @@ def query_loki(query, period="24h", limit=500):
         return {"data": {"result": []}}
 
 def get_blocked_requests(period="24h"):
-    data = query_loki('{container="waf-project-bunkerweb-1"} |= "403"', period=period)
+    data = query_loki('{container="waf-project-bunkerweb-1"} |~ "403|429"', period=period)
     out = []
     for stream in data.get("data", {}).get("result", []):
         for ts, line in stream.get("values", []):
@@ -79,7 +79,7 @@ def parse_attack_log_quick(line):
     """Version rapide pour extract ip/method/url."""
     info = {"ip": "unknown", "method": "GET", "url": "/"}
     m = re.search(
-        r'(?:\w+\s+)?(\d+\.\d+\.\d+\.\d+)\s+-\s+\S+\s+-\s+\[[^\]]+\]\s+"(\w+)\s+([^\s"]+)',
+        r'(?:[\w-]+\s+)?(\d+\.\d+\.\d+\.\d+)\s+-\s+\S+\s+-\s+\[[^\]]+\]\s+"(\w+)\s+([^\s"]+)',
         line
     )
     if m:
@@ -94,21 +94,22 @@ def parse_attack_log(line):
         "status": "403", "attack_type": "UNKNOWN",
         "timestamp": datetime.now().isoformat()
     }
-    # Format 1 : "1.2.3.4 - hash - [date] \"METHOD /url\""
-    # Format 2 BunkerWeb : "bwapi 1.2.3.4 - hash - [date] \"METHOD /url\""
     m = re.search(
-        r'(?:\w+\s+)?(\d+\.\d+\.\d+\.\d+)\s+-\s+\S+\s+-\s+\[[^\]]+\]\s+"(\w+)\s+([^\s"]+)',
+        r'(?:[\w-]+\s+)?(\d+\.\d+\.\d+\.\d+)\s+-\s+\S+\s+-\s+\[[^\]]+\]\s+"(\w+)\s+([^\s"]+)\s+[^"]+"\s+(\d{3})',
         line
     )
     if m:
         info["ip"]     = m.group(1)
         info["method"] = m.group(2)
         info["url"]    = m.group(3)
+        info["status"] = m.group(4)
 
     url  = info["url"].replace("+", " ").lower()
     full = line.lower()
 
-    if any(k in url for k in ["union", "select", "drop", "insert", "delete", "from"]):
+    if info["status"] == "429":
+        info["attack_type"] = "Rate-Limit"
+    elif any(k in url for k in ["union", "select", "drop", "insert", "delete", "from", "where", " or ", " and "]):
         info["attack_type"] = "SQLi"
     elif any(k in url for k in ["script", "alert", "onerror", "javascript", "onclick"]):
         info["attack_type"] = "XSS"
@@ -187,6 +188,8 @@ def parse_log_line(ts_ns, line, container):
     attack_type = ""
     if "403" in line:
         attack_type = "BLOCKED"
+    elif "429" in line:
+        attack_type = "RATE-LIMIT"
     elif "200" in line:
         attack_type = "200"
     if re.search(r'(UNION|SELECT)', line, re.I) and "403" in line:
@@ -274,12 +277,13 @@ def api_stats():
 @app.route('/api/live')
 def api_live():
     period = request.args.get('period', '1h')
-    data   = query_loki('{container="waf-project-bunkerweb-1"} |= "403"',
+    data   = query_loki('{container="waf-project-bunkerweb-1"} |~ "403|429"',
                         period=period, limit=20)
     attacks = []
     for stream in data.get("data", {}).get("result", []):
         for ts, line in stream.get("values", [])[-10:]:
             info        = parse_attack_log(line)
+            if info["ip"] == "unknown": continue  # Ignore les logs mal formés
             info["raw"] = line[:120]
             attacks.append(info)
 
@@ -376,4 +380,4 @@ def api_health():
     })
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='10.89.1.50', port=5000, debug=False)
